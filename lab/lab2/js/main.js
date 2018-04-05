@@ -115,8 +115,19 @@ Task 5 (stretch): Display travel time (seconds and minutes) and distance (km or 
 
 Task 6 (stretch): See if you can refocus the map to roughly the bounding box of your route
 
-
 ===================== */
+var origMarker;
+var destMarker;
+
+var origLat;
+var origLng;
+
+var destReq;
+var destLat;
+var destLng;
+var decodedRoute;
+var travelPath;
+var destMarker;
 
 var state = {
   position: {
@@ -130,7 +141,14 @@ var state = {
  */
 var goToOrigin = _.once(function(lat, lng) {
   map.flyTo([lat, lng], 14);
+  origLat = lat;
+  origLng = lng;
 });
+
+function precisionRound(number, precision) {
+  var factor = Math.pow(10, precision);
+  return Math.round(number * factor) / factor;
+}
 
 
 /* Given a lat and a long, we should create a marker, store it
@@ -140,7 +158,7 @@ var updatePosition = function(lat, lng, updated) {
   if (state.position.marker) { map.removeLayer(state.position.marker); }
   state.position.marker = L.circleMarker([lat, lng], {color: "blue"});
   state.position.updated = updated;
-  state.position.marker.addTo(map);
+  origMarker = state.position.marker.addTo(map).bindPopup("You Are Here");
   goToOrigin(lat, lng);
 };
 
@@ -168,10 +186,37 @@ $(document).ready(function() {
 
   // click handler for the "calculate" button (probably you want to do something with this)
   $("#calculate").click(function(e) {
+    if(decodedRoute !== undefined) {
+      map.removeLayer(travelPath);
+      map.removeLayer(destMarker);
+    }
     var dest = $('#dest').val();
-    console.log(dest);
+    destReq = "https://api.mapbox.com/geocoding/v5/mapbox.places/" + dest + ".json?geometries=true&access_token=pk.eyJ1IjoiZ2R1ZXIzIiwiYSI6ImNqZTBjeDl4NTB2dzkzM21vMzFpdnBlODkifQ._5WwLZhL7lz9uXLll9w9-Q";
+
+    $.ajax(destReq).then(function(res){
+      var destLat = res.features[0].geometry.coordinates[1];
+      var destLng = res.features[0].geometry.coordinates[0];
+      destMarker = L.circleMarker([destLat, destLng], {color: "red"}).addTo(map).bindPopup("Destination: " + dest);
+      var markerGroup = new L.featureGroup([origMarker, destMarker]);
+      map.fitBounds(markerGroup.getBounds());
+
+      var routeReq = 'https://api.mapbox.com/directions/v5/mapbox/driving/' + origLng + ',' + origLat + ';' + destLng + ',' + destLat + '?geometries=polyline&access_token=pk.eyJ1IjoiZ2R1ZXIzIiwiYSI6ImNqZTBjeDl4NTB2dzkzM21vMzFpdnBlODkifQ._5WwLZhL7lz9uXLll9w9-Q';
+
+      $.ajax(routeReq).then(function(res){
+        decodedRoute = decode(res.routes[0].geometry);
+        decodedDist = res.routes[0].distance;
+        decodedTime = res.routes[0].duration;
+        _.map(decodedRoute, function(item){
+          item[0] = item[0]*10;
+          item[1] = item[1]*10;
+        });
+
+        travelPath = L.polyline(decodedRoute).addTo(map);
+        $('#distance').text('Distance to Destination: ' + precisionRound(decodedDist/1609.3,2) + ' Miles');
+        $('#duration').text('Time to Destination: ' + precisionRound(decodedTime/60,0) + ' Minutes and ' + precisionRound(decodedTime%60,0) + ' Seconds');
+      });
+
+    });
   });
 
 });
-
-
